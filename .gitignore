@@ -1,6 +1,9 @@
 node_modules/
 data/state.json
 data/state.backup-*.json
+data/check-in-cache.json
+data/check-in-cache.json.*.tmp
+data/luma-browser-profile/
 .env
 dist/
 .DS_Store

@@ -25,7 +25,7 @@ if (CODES_FILE.includes('example')) console.warn('  ! data/codes.json not found 
 const CODES = JSON.parse(fs.readFileSync(path.join(ROOT, CODES_FILE), 'utf8'));
 const STATE_FILE = path.join(ROOT, 'data/state.json');
 
-let state = { allocations: [], config: { eventId: process.env.LUMA_EVENT_ID || null, poolMode: 'A-then-B', pollMs: 5000 } };
+let state = { allocations: [], config: { eventId: process.env.LUMA_EVENT_ID || null, poolMode: 'A-then-B', pollMs: 5000, pollEnabled: false } };
 try { const s = JSON.parse(fs.readFileSync(STATE_FILE, 'utf8')); state = { ...state, ...s, config: { ...state.config, ...(s.config || {}) } }; } catch {}
 const save = () => fs.writeFileSync(STATE_FILE, JSON.stringify(state, null, 2));
 // backfill code indexes on allocations made before `n` existed
@@ -189,7 +189,7 @@ async function resolveEvent() {
   const ev = (j.entries || []).map(e => e.event || e)[0]; if (!ev) throw new Error('no upcoming events on this calendar'); return ev;
 }
 async function pollLuma() {
-  if (!KEY || luma.running) return; luma.running = true;
+  if (!KEY || !state.config.pollEnabled || luma.running) return; luma.running = true;
   try {
     if (!luma.event) {
       const ev = await resolveEvent(); luma.event = { id: ev.id, name: ev.name, start_at: ev.start_at };
@@ -236,7 +236,7 @@ function recordWebhook(req, b) {
     signature_headers: Object.keys(req.headers).filter(h => /luma|signature|secret|webhook/i.test(h)),
   };
   hookLog.unshift(entry); if (hookLog.length > 100) hookLog.pop();
-  lastWebhookAt = entry.at; if (KEY && Date.now() - luma.lastSync > 1000) schedulePoll(150);   // nudge, but never faster than 1/s
+  lastWebhookAt = entry.at; if (KEY && state.config.pollEnabled && Date.now() - luma.lastSync > 1000) schedulePoll(150);   // nudge, but never faster than 1/s
   console.log(`  ⚡ webhook ${entry.type}  ${entry.guest || ''}  approval=${entry.approval || '-'}  checked_in_at=${entry.checked_in_at || '-'}`);
   return entry;
 }
@@ -327,13 +327,14 @@ const server = http.createServer(async (req, res) => {
       return json(res, 401, { message: 'missing or wrong key' });
     }
     if (url.pathname === '/guests') return json(res, 200, { guests: [...luma.guests.values()] });
-    if (url.pathname === '/health') return json(res, 200, { ok: true, luma: Boolean(KEY), serverPolls: Boolean(KEY), auth: Boolean(WALL_TOKEN), eventName: EVENT_NAME, eventId: state.config.eventId, pools: { A: CODES.A.length, B: CODES.B.length }, email: emailInfo() });
+    if (url.pathname === '/health') return json(res, 200, { ok: true, luma: Boolean(KEY), serverPolls: Boolean(KEY), auth: Boolean(WALL_TOKEN), eventName: EVENT_NAME, eventId: state.config.eventId, config: state.config, pools: { A: CODES.A.length, B: CODES.B.length }, email: emailInfo() });
     if (url.pathname === '/state' && req.method === 'GET') return json(res, 200, publicState());
     if (url.pathname === '/allocate' && req.method === 'POST') return json(res, 200, { allocation: allocate(await readBody(req)) });
     if (url.pathname === '/config' && req.method === 'POST') {
       const b = await readBody(req);
       const prevEvent = state.config.eventId;
       for (const k of ['eventId', 'poolMode', 'pollMs']) if (k in b) state.config[k] = b[k];
+      if ('pollEnabled' in b) state.config.pollEnabled = Boolean(b.pollEnabled);
       save(); if (state.config.eventId !== prevEvent) { luma.event = null; luma.fullAt = 0; luma.guests.clear(); } if (KEY) schedulePoll(200); return json(res, 200, { config: state.config });
     }
     if (url.pathname === '/webhooks/log') return json(res, 200, { lastWebhookAt, events: hookLog });
@@ -400,7 +401,7 @@ server.listen(PORT, () => {
   console.log(`\n  ● Grok Bot check-in wall`);
   console.log(`    local   http://localhost:${PORT}`);
   if (lan) console.log(`    lan     http://${lan}:${PORT}   (open on a second device for the desk)`);
-  console.log(`    luma    ${KEY ? `API key loaded · server polls every ${Math.round((state.config.pollMs || 5000) / 1000)}s` : 'NO API KEY → wall runs in demo mode (set LUMA_API_KEY in .env)'}`);
+  console.log(`    luma    ${KEY ? `API key loaded · polling ${state.config.pollEnabled ? `ON every ${Math.round((state.config.pollMs || 5000) / 1000)}s` : 'OFF'}` : 'NO API KEY → wall runs in demo mode (set LUMA_API_KEY in .env)'}`);
   console.log(`    auth    ${WALL_TOKEN ? 'token set → open /?key=' + WALL_TOKEN.slice(0, 4) + '…' : 'OPEN — set WALL_TOKEN before exposing this publicly'}`);
   if (PUBLIC_URL) console.log(`    public  ${PUBLIC_URL}`);
   console.log(`    codes   A=${CODES.A.length}  B=${CODES.B.length}   allocated so far: ${state.allocations.length}`);

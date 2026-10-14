@@ -19,8 +19,45 @@ lookups, resends, manual check-ins, and a CSV export.
 npm start                      # builds dist/index.html and serves http://localhost:8787
 ```
 
-With no `.env` the wall runs a demo with fake guests and placeholder codes. Press `Space`
-to fake a check-in, `F` for fullscreen.
+On a fresh checkout with no configured event, the wall runs a demo with fake guests and
+placeholder codes. Press `Space` to fake a check-in, `F` for fullscreen. Once an event is
+configured, `/` shows persisted real check-ins; use `?demo` to request the fake stream.
+
+## Standalone check-in poller
+
+`luma-checkin-poller.mjs` reuses a local Chrome login to read the organizer's checked-in
+list; it does not require a Luma API key. Polling is **off by default**, so this command
+makes no network request:
+
+```sh
+npm run checkins
+```
+
+Save the organizer login once, start the wall, and then explicitly turn polling on:
+
+```sh
+npm run checkins:login    # first run only: log into Luma in the opened Chrome window
+npm start                 # terminal 1: wall server
+npm run checkins:on       # terminal 2: wait for the desk-console polling switch
+npm run checkins:once     # fetch once, update the cache, and exit
+npm run checkins:status   # read the cache without contacting Luma
+```
+
+Open the desk console (`?manual&desk`) and use the **POLL OFF / POLL ON** switch in its
+header. The switch is off by default, is stored in `data/state.json`, and pauses/resumes
+both the browser-session helper and the official API poller without stopping either
+process.
+
+The first enabled run creates `data/check-in-cache.json` as a baseline and reports the
+current `latest` guest without replaying every historical check-in. Later polls emit one
+`{"type":"check_in","username":"..."}` line per new check-in and POST it to the local wall.
+Open the keyless wall as `http://localhost:8787/`; if `WALL_TOKEN` is set, both
+processes read it from `.env`. Set `LUMA_CHECKIN_POLL_ENABLED=1` instead of using `--on`,
+or change the interval with `LUMA_CHECKIN_POLL_MS` (minimum 1000 ms). The Chrome login is
+stored locally under `data/luma-browser-profile/` and ignored by Git.
+
+This mode uses Luma's organizer web session and an undocumented admin endpoint, so Luma
+may change it. The API-key/webhook setup below remains the official hosted option.
 
 ## Running it for real
 

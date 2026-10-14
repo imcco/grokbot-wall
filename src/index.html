@@ -23,6 +23,15 @@
   .dk-title{color:var(--accent);font-weight:600;letter-spacing:.08em}
   .dk-sub{color:var(--dim);margin-left:8px}
   .dk-spacer{flex:1}
+  .dk-poll{display:inline-flex;align-items:center;gap:7px;border:1px solid var(--line);padding:5px 9px;cursor:pointer;white-space:nowrap;color:var(--dim);font-size:11px;letter-spacing:.06em;text-transform:uppercase}
+  .dk-poll:hover{border-color:var(--accent);color:#fff}
+  .dk-poll input{position:absolute;opacity:0;pointer-events:none}
+  .dk-poll-track{width:30px;height:14px;border:1px solid #555;background:#111;position:relative;box-sizing:border-box}
+  .dk-poll-track::after{content:"";position:absolute;width:8px;height:8px;left:2px;top:2px;background:#777;transition:transform .12s ease,background .12s ease}
+  .dk-poll input:checked+.dk-poll-track{border-color:var(--accent)}
+  .dk-poll input:checked+.dk-poll-track::after{background:var(--accent);transform:translateX(16px)}
+  .dk-poll input:focus-visible+.dk-poll-track{outline:2px solid #fff;outline-offset:2px}
+  .dk-poll:has(input:disabled){opacity:.45;cursor:not-allowed}
   .dk-body{display:flex;flex:1;min-height:0}
   .dk-left{width:46%;display:flex;flex-direction:column;border-right:1px solid var(--line)}
   .dk-left input{margin:12px 14px;flex:none}
@@ -68,6 +77,11 @@
   <div class="dk-head">
     <span class="dk-title">▌ DESK CONSOLE</span><span class="dk-sub" id="dk-mode"></span>
     <span class="dk-spacer"></span>
+    <label class="dk-poll" for="dk-polling" title="Start or pause Luma check-in polling">
+      <input id="dk-polling" type="checkbox" role="switch">
+      <span class="dk-poll-track" aria-hidden="true"></span>
+      <span id="dk-poll-label">poll off</span>
+    </label>
     <button id="dk-manual">+ manual check-in</button>
     <button id="dk-export">export csv</button>
     <button id="dk-settings">settings</button>
@@ -146,7 +160,7 @@ const app = {
   guests: new Map(),       // key -> {key,id,name,email,checkedInAt,approval}
   alloc: new Map(),        // key -> allocation
   feed: [],                // allocations newest first
-  config: { eventId: null, poolMode: 'A-then-B', pollMs: 5000 },
+  config: { eventId: null, poolMode: 'A-then-B', pollMs: 5000, pollEnabled: false },
   labels: (CODES && CODES.labels) || { A: 'Pool A', B: 'Pool B' },
   poolTotals: { A: CODES ? CODES.A.length : 0, B: CODES ? CODES.B.length : 0 },
   lastSync: 0, syncing: false, error: '', initial: true, persist: false, email: null, lastWebhookAt: null, serverPolls: false, failedSyncs: 0, headline: '',
@@ -208,7 +222,7 @@ function addAllocation(a, celebrate) {
 }
 async function pushConfig(patch) {
   Object.assign(app.config, patch);
-  if (app.persist) await api('/config', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(patch) }).catch(() => {});
+  if (app.server) await api('/config', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(patch) }).catch(() => {});
   else if (app.mode !== 'demo') saveLocal();
 }
 
@@ -936,6 +950,7 @@ function guestRows() {
 }
 function renderDesk() {
   app.dirty = false;
+  renderPollToggle();
   const mc = mailCounts();
   $('#dk-mode').textContent = `${app.mode.toUpperCase()} · ${app.feed.length} checked in · ${creditsLeft()} credits left${app.persist ? '' : app.mode === 'demo' ? ' · not saved' : ' · local storage'}${app.server && app.mode !== 'demo' ? (app.email && app.email.enabled ? ` · ✉ ${mc.sent} sent${mc.failed ? `, ${mc.failed} failed` : ''}${app.email.dryRun ? ' (dry run)' : ''}` : ' · ✉ off') : ''}`;
   const list = guestRows();
@@ -944,6 +959,13 @@ function renderDesk() {
       <span class="badge${g.checkedInAt ? ' in' : ''}">${g.checkedInAt ? 'in ' + fmtHM(g.checkedInAt) : 'registered'}</span>
       <span class="badge code">${g.alloc ? esc(codeTag(g.alloc)) : '—'}</span>${mailBadge(g.alloc)}</div>`).join('') || `<div class="dk-empty" style="padding:14px">no guests match</div>`;
   renderDetail(list.find(g => g.key === selectedKey));
+}
+function renderPollToggle() {
+  const input = $('#dk-polling'), label = $('#dk-poll-label');
+  const enabled = Boolean(app.config.pollEnabled);
+  input.checked = enabled;
+  input.disabled = !app.server;
+  label.textContent = `poll ${enabled ? 'on' : 'off'}`;
 }
 function mailBadge(a) {
   const m = a && a.mail; if (!m || m.status === 'skipped') return '<span></span>';
@@ -1004,6 +1026,22 @@ $('#dk-close').onclick = closeDesk;
 $('#dk-export').onclick = exportCsv;
 $('#dk-manual').onclick = manualModal;
 $('#dk-settings').onclick = settingsModal;
+$('#dk-polling').onchange = async e => {
+  const input = e.currentTarget, enabled = input.checked, previous = !enabled;
+  input.disabled = true;
+  try {
+    const r = await api('/config', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ pollEnabled: enabled }) });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(j.message || `config ${r.status}`);
+    Object.assign(app.config, j.config || { pollEnabled: enabled });
+    toast(`polling ${enabled ? 'started' : 'paused'}`);
+  } catch (error) {
+    app.config.pollEnabled = previous;
+    toast(`could not change polling: ${error.message}`);
+  } finally {
+    renderPollToggle();
+  }
+};
 
 function exportCsv() {
   const rows = [['name', 'email', 'checked_in_at', 'allocated_at', 'source', 'pool', 'code', 'url', 'email_status', 'emailed_at', 'email_to', 'email_error']];
@@ -1099,9 +1137,9 @@ async function boot() {
     try { const r = await api('/health', { cache: 'no-store' }); if (r.status === 401) { showErr('Wall is locked — open it with ?key=… in the URL.'); return; } h = await r.json(); break; }
     catch { if (location.protocol === 'file:' || params.has('demo') || attempt >= 60) break; app.error = 'connecting to server…'; await new Promise(r => setTimeout(r, 3000)); }
   }
-  if (h) { app.server = !!h.ok; app.luma = !!h.luma; app.poolTotals = h.pools || app.poolTotals; app.email = h.email || null; app.serverPolls = !!h.serverPolls; app.headline = h.eventName || ''; app.error = ''; }
+  if (h) { app.server = !!h.ok; app.luma = !!h.luma; Object.assign(app.config, h.config || {}); app.poolTotals = h.pools || app.poolTotals; app.email = h.email || null; app.serverPolls = !!h.serverPolls; app.headline = h.eventName || ''; app.error = ''; }
   else app.server = false;
-  const demo = params.has('demo') || (!app.server && !params.has('manual')) || (app.server && !app.luma && !params.has('manual'));
+  const demo = params.has('demo') || (!params.has('manual') && (!app.server || (!app.luma && !app.config.eventId)));
   app.persist = app.server && !demo;
   if (app.persist) await syncState(); else if (!demo) loadLocal();
   for (const a of app.alloc.values()) if (!app.feed.includes(a)) app.feed.push(a);
@@ -1124,7 +1162,7 @@ async function boot() {
     } catch (e) { app.error = e.message; showErr('Luma: ' + e.message + ' — press D → settings to pick an event, or add ?demo to the URL.'); }
   }
   app.initial = false;
-  if (app.persist) setInterval(syncState, app.serverPolls ? 2000 : 4000);
+  if (app.persist) setInterval(syncState, app.serverPolls ? 2000 : 1000);
   document.documentElement.style.setProperty('--accent', accent().main);
   app.dirty = true;
   if (params.has('style')) { setStyle(Number(params.get('style')) || 0, nowS(), 0.01); if (params.has('hold')) morph.hold = true; }
