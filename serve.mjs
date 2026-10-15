@@ -38,6 +38,8 @@ const EMAIL_REPLY_TO = process.env.EMAIL_REPLY_TO || '';
 const EMAIL_SUBJECT = process.env.EMAIL_SUBJECT || `Your Cursor credits from ${process.env.EVENT_NAME || 'Grok Bot Meetup'}`;
 const EVENT_NAME = process.env.EVENT_NAME || '';
 const EMAIL_EVENT = process.env.EMAIL_EVENT_NAME || EVENT_NAME || 'Grok Bot Meetup';
+// Fallback denominator for the wall's CHECK-INS counter when there is no LUMA_API_KEY to count guests
+const EVENT_TOTAL = Number(process.env.LUMA_EVENT_TOTAL || 0);
 const EMAIL_DRY_RUN = /^(1|true|yes)$/i.test(process.env.EMAIL_DRY_RUN || '');
 const EMAIL_TEST_TO = process.env.EMAIL_TEST_TO || '';           // if set, every guest email is redirected here
 const EMAIL_OFF = /^(1|true|yes)$/i.test(process.env.EMAIL_OFF || '');
@@ -310,7 +312,7 @@ function allocate(body) {
 
 const json = (res, code, obj) => { res.writeHead(code, { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' }); res.end(JSON.stringify(obj)); };
 const readBody = req => new Promise(r => { let b = ''; req.on('data', d => b += d); req.on('end', () => { try { r(b ? JSON.parse(b) : {}); } catch { r({}); } }); });
-const publicState = () => ({ allocations: state.allocations, config: state.config, pools: { A: CODES.A.length, B: CODES.B.length }, labels: CODES.labels, lastWebhookAt, luma: { serverPolls: Boolean(KEY), event: luma.event, total: luma.total, lastSync: luma.lastSync, error: luma.error } });
+const publicState = () => ({ allocations: state.allocations, config: state.config, pools: { A: CODES.A.length, B: CODES.B.length }, labels: CODES.labels, lastWebhookAt, luma: { serverPolls: Boolean(KEY), event: luma.event, total: luma.total || EVENT_TOTAL, lastSync: luma.lastSync, error: luma.error } });
 
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, 'http://localhost');
@@ -327,7 +329,7 @@ const server = http.createServer(async (req, res) => {
       return json(res, 401, { message: 'missing or wrong key' });
     }
     if (url.pathname === '/guests') return json(res, 200, { guests: [...luma.guests.values()] });
-    if (url.pathname === '/health') return json(res, 200, { ok: true, luma: Boolean(KEY), serverPolls: Boolean(KEY), auth: Boolean(WALL_TOKEN), eventName: EVENT_NAME, eventId: state.config.eventId, config: state.config, pools: { A: CODES.A.length, B: CODES.B.length }, email: emailInfo() });
+    if (url.pathname === '/health') return json(res, 200, { ok: true, luma: Boolean(KEY), serverPolls: Boolean(KEY), auth: Boolean(WALL_TOKEN), eventName: EVENT_NAME, eventTotal: EVENT_TOTAL, eventId: state.config.eventId, config: state.config, pools: { A: CODES.A.length, B: CODES.B.length }, email: emailInfo() });
     if (url.pathname === '/state' && req.method === 'GET') return json(res, 200, publicState());
     if (url.pathname === '/allocate' && req.method === 'POST') return json(res, 200, { allocation: allocate(await readBody(req)) });
     if (url.pathname === '/config' && req.method === 'POST') {
