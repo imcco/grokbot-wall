@@ -1137,7 +1137,7 @@ async function boot() {
     try { const r = await api('/health', { cache: 'no-store' }); if (r.status === 401) { showErr('Wall is locked — open it with ?key=… in the URL.'); return; } h = await r.json(); break; }
     catch { if (location.protocol === 'file:' || params.has('demo') || attempt >= 60) break; app.error = 'connecting to server…'; await new Promise(r => setTimeout(r, 3000)); }
   }
-  if (h) { app.server = !!h.ok; app.luma = !!h.luma; Object.assign(app.config, h.config || {}); app.poolTotals = h.pools || app.poolTotals; app.email = h.email || null; app.serverPolls = !!h.serverPolls; app.headline = h.eventName || ''; if (!app.total && h.eventTotal) app.total = h.eventTotal; app.error = ''; }
+  if (h) { app.server = !!h.ok; app.luma = !!h.luma; Object.assign(app.config, h.config || {}); app.poolTotals = h.pools || app.poolTotals; app.email = h.email || null; app.serverPolls = !!h.serverPolls; app.headline = h.eventName || ''; app.error = ''; }
   else app.server = false;
   const demo = params.has('demo') || (!params.has('manual') && (!app.server || (!app.luma && !app.config.eventId)));
   app.persist = app.server && !demo;

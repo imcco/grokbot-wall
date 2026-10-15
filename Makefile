@@ -40,7 +40,7 @@ status:           ## 看墙 / 轮询缓存 / 相关进程
 	@echo ""
 	@printf '%b\n' "  \033[36m墙服务\033[0m  $(URL)"
 	@if curl -sf -m 3 $(URL)/health -o /tmp/.wall-health 2>/dev/null; then \
-		python3 -c "import json;d=json.load(open('/tmp/.wall-health'));mail=d.get('email',{});print('\033[32m    ● 运行中\033[0m  ' + (d.get('eventName') or '(未命名)') + '  ·  总数 ' + str(d.get('eventTotal') or '-') + '  ·  luma ' + ('有key' if d.get('luma') else '无key') + '  ·  邮件 ' + ('dry-run' if mail.get('dryRun') else ('开' if mail.get('enabled') else '关')))"; \
+		python3 -c "import json;d=json.load(open('/tmp/.wall-health'));mail=d.get('email',{});print('\033[32m    ● 运行中\033[0m  ' + (d.get('eventName') or '(未命名)') + '  ·  luma ' + ('有key' if d.get('luma') else '无key') + '  ·  邮件 ' + ('dry-run' if mail.get('dryRun') else ('开' if mail.get('enabled') else '关')))"; \
 	else printf '%b\n' "    \033[31m● 未运行\033[0m"; fi
 	@echo ""
 	@printf '%b\n' "  \033[36m轮询缓存\033[0m"
@@ -102,13 +102,6 @@ relogin:          ## 换账号：停进程 → 备份 profile → 重新登录
 ARG := $(word 2,$(MAKECMDGOALS))
 
 # ---------------------------------------------------------------- 环境变量替换（写法1：sed 替换已存在的键）
-total:            ## 设置总报名人数：make total 120
-	@test -n "$(ARG)" || { echo "用法: make total <人数>"; exit 1; }
-	@echo "$(ARG)" | grep -qE '^[0-9]+$$' || { echo "总人数必须是整数（收到: $(ARG)）"; exit 1; }
-	@sed -i '' -E 's|^LUMA_EVENT_TOTAL=.*|LUMA_EVENT_TOTAL=$(ARG)|' .env
-	@echo "已写入：" $$(grep '^LUMA_EVENT_TOTAL=' .env)
-	@echo "重启 'make start' 后生效。"
-
 event:            ## 切换活动 ID：make event evt-xxxxx
 	@test -n "$(ARG)" || { echo "用法: make event evt-xxxxx"; exit 1; }
 	@sed -i '' -E 's|^LUMA_EVENT_ID=.*|LUMA_EVENT_ID=$(ARG)|' .env
@@ -162,4 +155,4 @@ help:             ## 显示本帮助
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) \
 		| awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-10s\033[0m %s\n", $$1, $$2}'
 	@echo ""
-	@echo "  带参数：make total 120 · make event evt-xxx · make token abc · make name \"...\""
+	@echo "  带参数：make event evt-xxx · make token abc · make name \"...\""
