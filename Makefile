@@ -51,7 +51,7 @@ status:           ## 看墙 / 轮询缓存 / 相关进程
 	K=""; [ -n "$$TOKEN" ] && K="key=$$TOKEN&"; \
 	LAN=$$(ipconfig getifaddr en0 2>/dev/null); \
 	printf '%b\n' "    大屏     $(URL)/?$${K}manual"; \
-	printf '%b\n' "    带音乐   $(URL)/?$${K}manual&music"; \
+	printf '%b\n' "    大屏带音乐+控制台  $(URL)/?$${K}manual&desk&music"; \
 	printf '%b\n' "    控制台   $(URL)/?$${K}manual&desk"; \
 	if [ -n "$$LAN" ]; then printf '%b\n' "    局域网   http://$$LAN:$(PORT)/?$${K}manual"; else printf '%b\n' "    局域网   \033[33m(无 en0 IP)\033[0m"; fi
 	@echo ""
