@@ -46,6 +46,15 @@ status:           ## 看墙 / 轮询缓存 / 相关进程
 	@printf '%b\n' "  \033[36m轮询缓存\033[0m"
 	@npm run --silent checkins:status 2>/dev/null | python3 -c "import json,sys;j=json.load(sys.stdin);l=j.get('latest') or {};print('    活动   ' + str(j.get('eventId')));print('    最新   ' + (l.get('username') or '无') + '  ' + (l.get('checkedInAt') or ''));print('    更新   ' + str(j.get('updatedAt')))" 2>/dev/null || printf '%b\n' "    \033[33m缓存不可读\033[0m"
 	@echo ""
+	@printf '%b\n' "  \033[36m页面\033[0m（当前目录打开即用）"
+	@TOKEN=$$(grep -E '^WALL_TOKEN=' .env 2>/dev/null | cut -d= -f2- | tr -d ' '); \
+	K=""; [ -n "$$TOKEN" ] && K="key=$$TOKEN&"; \
+	LAN=$$(ipconfig getifaddr en0 2>/dev/null); \
+	printf '%b\n' "    大屏     $(URL)/?$${K}manual"; \
+	printf '%b\n' "    带音乐   $(URL)/?$${K}manual&music"; \
+	printf '%b\n' "    控制台   $(URL)/?$${K}manual&desk"; \
+	if [ -n "$$LAN" ]; then printf '%b\n' "    局域网   http://$$LAN:$(PORT)/?$${K}manual"; else printf '%b\n' "    局域网   \033[33m(无 en0 IP)\033[0m"; fi
+	@echo ""
 	@printf '%b\n' "  \033[36m进程\033[0m"
 	@ps -eo pid,etime,command | grep -E 'node serve\.mjs|luma-checkin-poller' | grep -v grep | awk '{printf "    %-7s %-10s %s\n", $$1, $$2, ($$0 ~ /serve/ ? "墙" : "轮询器")}' || true
 	@ps -eo pid,command | grep -q '[l]uma-browser-profile' && printf '%b\n' "    \033[36m专用 Chrome 在运行\033[0m" || true
